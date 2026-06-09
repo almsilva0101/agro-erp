@@ -5,7 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import hashlib
-from sqlalchemy import text # <-- IMPORT NOVO AQUI!
+from sqlalchemy import text
 
 # ==========================================
 # 1. SETUP & UI/UX DESIGN
@@ -47,7 +47,6 @@ conn = st.connection("supabase", type="sql")
 
 def inicializar_estruturas_nuvem():
     try:
-        # Usando o modo Session (correto para ações que não retornam linhas)
         with conn.session as s:
             s.execute(text("""
                 CREATE TABLE IF NOT EXISTS erp_usuarios (
@@ -68,7 +67,6 @@ def inicializar_estruturas_nuvem():
             """))
             s.commit()
         
-        # Cria o admin padrão caso a tabela esteja vazia (query normal porque queremos ver linhas)
         df_adm = conn.query("SELECT * FROM erp_usuarios WHERE usuario = 'admin';")
         if df_adm.empty:
             with conn.session as s:
@@ -141,7 +139,6 @@ def tela_autenticacao():
                     else:
                         hash_db = com_hash(nova_senha)
                         data_atual = datetime.now().strftime("%Y-%m-%d")
-                        # Modo correto para Inserir dados
                         with conn.session as s:
                             s.execute(text(f"INSERT INTO erp_usuarios VALUES ('{novo_user}', '{hash_db}', '{novo_perfil}', '{data_atual}');"))
                             s.commit()
@@ -169,4 +166,100 @@ def tela_dashboard():
             col_m1, col_m2 = st.columns([1.2, 1])
             with col_m1:
                 cores = {"Operacional": "#10B981", "Atenção": "#F59E0B", "CRÍTICO": "#EF4444"}
-                fig_mapa = px.scatter_mapbox(df_frota, lat="lat", lon="lon", color="status", size="size_map", hover_name="id
+                
+                # LINHAS QUEBRADAS PARA EVITAR ERRO DE CÓPIA!
+                fig_mapa = px.scatter_mapbox(
+                    df_frota, 
+                    lat="lat", 
+                    lon="lon", 
+                    color="status", 
+                    size="size_map", 
+                    hover_name="id_equipamento", 
+                    hover_data=["modelo", "rpm_motor", "temp_motor_c"], 
+                    color_discrete_map=cores, 
+                    zoom=8.5, 
+                    center={"lat": -12.8, "lon": -55.8}, 
+                    title="Radar GPS Transmissão contínua"
+                )
+                
+                fig_mapa.update_layout(mapbox_style="carto-darkmatter", margin={"r":0,"t":40,"l":0,"b":0}, paper_bgcolor="#050810")
+                st.plotly_chart(fig_mapa, use_container_width=True, height=450)
+            
+            with col_m2:
+                # LINHAS QUEBRADAS PARA EVITAR ERRO DE CÓPIA!
+                fig_oee = px.scatter(
+                    df_frota, 
+                    x="rpm_motor", 
+                    y="temp_motor_c", 
+                    color="status", 
+                    size="nivel_diesel_lts", 
+                    hover_name="id_equipamento", 
+                    title="Telemetria CAN Bus em Tempo Real", 
+                    color_discrete_map=cores
+                )
+                
+                fig_oee.update_layout(template="plotly_dark", paper_bgcolor="#050810", plot_bgcolor="#050810")
+                st.plotly_chart(fig_oee, use_container_width=True, height=450)
+            st.dataframe(df_frota, use_container_width=True, height=200)
+
+    with tab_lavoura:
+        st.dataframe(df_lavoura.style.background_gradient(subset=['NDVI_Saude'], cmap='YlGn'), use_container_width=True, height=350)
+    with tab_pecuaria:
+        st.dataframe(df_pecuaria.style.highlight_max(subset=['Mortalidade_Perc'], color='#7F1D1D'), use_container_width=True, height=350)
+    with tab_logistica:
+        st.dataframe(df_rotas, use_container_width=True, height=350)
+
+def tela_cadastro():
+    st.title("🗂️ Cadastro de Master Data (Nuvem)")
+    st.markdown("Insira novos equipamentos diretamente na tabela permanente do Supabase.")
+    
+    with st.form("form_cadastro_nuvem"):
+        col1, col2, col3 = st.columns(3)
+        id_ativo = col1.text_input("ID/Código do Ativo", placeholder="Ex: TR-999")
+        tipo = col1.selectbox("Categoria", ["Trator de Esteira", "Colheitadeira", "Pulverizador Autopropelido", "Caminhão Graneleiro"])
+        fabricante = col2.text_input("Fabricante/Marca", placeholder="Ex: John Deere / Case IH")
+        chassi = col2.text_input("Chassi / VIN")
+        operador = col3.text_input("Operador Padrão Designado")
+        
+        if st.form_submit_button("Sincronizar com Banco de Dados Cloud", type="primary"):
+            if id_ativo:
+                id_clean = id_ativo.replace("'", "")
+                try:
+                    with conn.session as s:
+                        s.execute(text(f"INSERT INTO frota_manual VALUES ('{id_clean}', '{tipo}', '{fabricante}', '{chassi}', '{operador}');"))
+                        s.commit()
+                    st.success(f"✅ Ativo {id_clean} gravado com sucesso no Supabase!")
+                    st.rerun() 
+                except Exception as e:
+                    st.error(f"❌ Erro ao salvar: {e}")
+            else:
+                st.error("O campo ID/Código é obrigatório.")
+                
+    st.markdown("---")
+    st.markdown("##### 🗄️ Ativos Cadastrados via Tela (Armazenados no PostgreSQL)")
+    st.dataframe(df_manual, use_container_width=True)
+
+# ==========================================
+# 5. ROTEAMENTO DO ERP
+# ==========================================
+if not st.session_state['logado']:
+    tela_autenticacao()
+else:
+    st.sidebar.markdown(f"**👤 Operador:** {st.session_state['usuario'].upper()}")
+    st.sidebar.markdown("---")
+    menu = st.sidebar.radio("Módulos do Sistema", ["📊 Monitor C4 (Dashboard)", "🗂️ Inserção de Dados (Data Entry)"])
+    st.sidebar.markdown("---")
+    
+    if menu == "📊 Monitor C4 (Dashboard)":
+        if st.sidebar.button("🔄 Atualizar Radar IoT", use_container_width=True):
+            st.rerun()
+        tela_dashboard()
+        
+    elif menu == "🗂️ Inserção de Dados (Data Entry)":
+        tela_cadastro()
+
+    st.sidebar.markdown("---")
+    if st.sidebar.button("Encerrar Sessão", use_container_width=True):
+        st.session_state['logado'] = False
+        st.session_state['usuario'] = ""
+        st.rerun()
