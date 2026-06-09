@@ -40,13 +40,12 @@ if 'frota_cadastrada' not in st.session_state:
 # ==========================================
 # 3. MOTOR DE BANCO DE DADOS (SUPABASE NUVEM)
 # ==========================================
-# Cria a conexão com o Supabase usando o "Secret"
 conn = st.connection("supabase", type="sql")
 
 def inicializar_banco_nuvem():
     try:
-        # Verifica se a tabela "Lavoura" já existe
-        df_check = conn.query("SELECT table_name FROM information_schema.tables WHERE table_name = 'Lavoura';")
+        # Tudo em minúsculo para evitar confusão do PostgreSQL
+        df_check = conn.query("SELECT table_name FROM information_schema.tables WHERE table_name = 'lavoura';")
         
         if df_check.empty:
             st.toast("⚙️ Criando tabelas no Supabase pela primeira vez...")
@@ -55,21 +54,21 @@ def inicializar_banco_nuvem():
             df_pecuaria = pd.DataFrame([{"Lote": f"LT-BR-{np.random.randint(1000, 9999)}", "Raca": np.random.choice(["Nelore", "Angus"]), "Cabecas": np.random.randint(50, 300), "Peso_Arroba": round(np.random.uniform(12.0, 22.0), 1), "Mortalidade_Perc": round(np.random.uniform(0.1, 2.5), 2), "Vacinados_Perc": np.random.randint(85, 100)} for i in range(1, 26)])
             df_rotas = pd.DataFrame([{"Manifesto": f"CT-{np.random.randint(100000, 999999)}", "Motorista": np.random.choice(["Sérgio", "Antônio"]), "Placa": f"XYZ-{np.random.randint(1000,9999)}", "Destino": "Santos (SP)", "Carga_Ton": np.random.randint(35, 55), "Espera_Porto_h": np.random.randint(4, 72), "Lat_O": -12.54, "Lon_O": -55.72, "Lat_D": -23.96, "Lon_D": -46.33} for i in range(1, 16)])
 
-            # Envia os dados para a nuvem
-            df_lavoura.to_sql('Lavoura', con=conn.engine, if_exists='replace', index=False)
-            df_pecuaria.to_sql('Pecuaria', con=conn.engine, if_exists='replace', index=False)
-            df_rotas.to_sql('Rotas', con=conn.engine, if_exists='replace', index=False)
+            # Salvando as tabelas com letras minúsculas
+            df_lavoura.to_sql('lavoura', con=conn.engine, if_exists='replace', index=False)
+            df_pecuaria.to_sql('pecuaria', con=conn.engine, if_exists='replace', index=False)
+            df_rotas.to_sql('rotas', con=conn.engine, if_exists='replace', index=False)
     except Exception as e:
-        st.error(f"⚠️ Erro ao conectar no Supabase. Detalhe: {e}")
+        st.error(f"⚠️ Erro ao criar dados. Detalhe: {e}")
 
-# Inicia a checagem ao carregar a página
 inicializar_banco_nuvem()
 
 @st.cache_data(ttl=600)
 def ler_dados_nuvem():
-    df_l = conn.query("SELECT * FROM Lavoura")
-    df_p = conn.query("SELECT * FROM Pecuaria")
-    df_r = conn.query("SELECT * FROM Rotas")
+    # Lendo as tabelas com letras minúsculas
+    df_l = conn.query("SELECT * FROM lavoura")
+    df_p = conn.query("SELECT * FROM pecuaria")
+    df_r = conn.query("SELECT * FROM rotas")
     return df_l, df_p, df_r
 
 df_lavoura, df_pecuaria, df_rotas = ler_dados_nuvem()
