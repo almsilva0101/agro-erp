@@ -65,8 +65,6 @@ def inicializar_estruturas_nuvem():
                     operador TEXT
                 );
             """))
-            
-            # COMANDO À PROVA DE BALA: ON CONFLICT DO NOTHING
             s.execute(text(f"""
                 INSERT INTO erp_usuarios (usuario, senha_hash, perfil, data_cadastro) 
                 VALUES ('admin', '{com_hash('admin')}', 'Administrador', '2026-06-09')
@@ -84,7 +82,6 @@ def ler_dados_nuvem():
     df_r = conn.query("SELECT * FROM rotas;")
     
     try:
-        # ttl=0 garante que os dados IoT são lidos em tempo real, sem usar a cache!
         df_f = conn.query("SELECT * FROM telemetria_tempo_real;", ttl=0)
         df_f["size_map"] = df_f["status"].apply(lambda x: 30 if x == "CRÍTICO" else 12)
     except:
@@ -104,89 +101,4 @@ def tela_autenticacao():
     
     with col2:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.markdown("<h2 style='text-align: center;'>🛰️ AgroOS Enterprise</h2>", unsafe_allow_html=True)
-        
-        menu_auth = st.radio("Selecione uma opção", ["Entrar no Sistema", "Criar Nova Conta (Auto-Cadastro)"], horizontal=True)
-        st.markdown("---")
-        
-        if menu_auth == "Entrar no Sistema":
-            user = st.text_input("Usuário/E-mail", key="login_user")
-            password = st.text_input("Senha", type="password", key="login_pass")
-            
-            if st.button("Autenticar no ERP", use_container_width=True, type="primary"):
-                df_user = conn.query(f"SELECT * FROM erp_usuarios WHERE usuario = '{user}';", ttl=0)
-                if not df_user.empty and df_user.iloc[0]['senha_hash'] == com_hash(password):
-                    st.session_state['logado'] = True
-                    st.session_state['usuario'] = user
-                    st.rerun()
-                else:
-                    st.error("❌ Usuário ou senha incorretos.")
-                    
-        elif menu_auth == "Criar Nova Conta (Auto-Cadastro)":
-            st.markdown("##### Formulário de Acesso ao Sistema")
-            novo_user = st.text_input("Escolha um Nome de Usuário", placeholder="Ex: joao.silva")
-            novo_perfil = st.selectbox("Seu Cargo/Perfil", ["Gestor de Operações", "Agrônomo", "Operador de Máquinas", "Logística"])
-            nova_senha = st.text_input("Crie uma Senha Forte", type="password")
-            confirma_senha = st.text_input("Confirme a Senha", type="password")
-            
-            if st.button("Registrar na Nuvem", use_container_width=True, type="primary"):
-                if not novo_user or not nova_senha:
-                    st.error("⚠️ Todos os campos são obrigatórios.")
-                elif nova_senha != confirma_senha:
-                    st.error("❌ As senhas não coincidem.")
-                else:
-                    df_existe = conn.query(f"SELECT * FROM erp_usuarios WHERE usuario = '{novo_user}';", ttl=0)
-                    if not df_existe.empty:
-                        st.error("❌ Este nome de utilizador já está em uso.")
-                    else:
-                        hash_db = com_hash(nova_senha)
-                        data_atual = datetime.now().strftime("%Y-%m-%d")
-                        with conn.session as s:
-                            s.execute(text(f"INSERT INTO erp_usuarios (usuario, senha_hash, perfil, data_cadastro) VALUES ('{novo_user}', '{hash_db}', '{novo_perfil}', '{data_atual}');"))
-                            s.commit()
-                        st.success("🎉 Conta criada com sucesso! Mude para a aba 'Entrar no Sistema'.")
-                        
-        st.markdown('</div>', unsafe_allow_html=True)
-
-def tela_dashboard():
-    st.markdown("<h3>🌐 Centro de Comando Integrado (C4)</h3>", unsafe_allow_html=True)
-    
-    c1, c2, c3, c4 = st.columns(4)
-    c1.markdown(f'<div class="glass-card"><div class="metric-title">Área Mapeada</div><div class="metric-value">{df_lavoura["Hectares"].sum():,.0f} ha</div><div class="metric-delta">{len(df_lavoura)} Talhões</div></div>', unsafe_allow_html=True)
-    c2.markdown(f'<div class="glass-card"><div class="metric-title">Rebanho Ativo</div><div class="metric-value">{df_pecuaria["Cabecas"].sum():,.0f} Cab</div><div class="metric-delta">{len(df_pecuaria)} Lotes</div></div>', unsafe_allow_html=True)
-    c3.markdown(f'<div class="glass-card"><div class="metric-title">Carga em Trânsito</div><div class="metric-value">{df_rotas["Carga_Ton"].sum():,.0f} Ton</div><div class="metric-delta">{len(df_rotas)} CT-es</div></div>', unsafe_allow_html=True)
-    criticos = len(df_frota[df_frota["status"] == "CRÍTICO"]) if not df_frota.empty else 0
-    c4.markdown(f'<div class="glass-card"><div class="metric-title">🚨 Máquinas Críticas (IoT)</div><div class="metric-value metric-alert">{criticos}</div></div>', unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    tab_frota, tab_lavoura, tab_pecuaria, tab_logistica = st.tabs(["🚜 Radar IoT da Frota", "🌾 Agronomia & Solos", "🐄 Gestão Pecuária", "🚛 Logística & Escoamento"])
-
-    with tab_frota:
-        if df_frota.empty:
-            st.warning("⚠️ A aguardar dados do simulador_iot.py... Ligue o script no seu computador.")
-        else:
-            col_m1, col_m2 = st.columns([1.2, 1])
-            with col_m1:
-                cores = {"Operacional": "#10B981", "Atenção": "#F59E0B", "CRÍTICO": "#EF4444"}
-                fig_mapa = px.scatter_mapbox(
-                    df_frota, 
-                    lat="lat", 
-                    lon="lon", 
-                    color="status", 
-                    size="size_map", 
-                    hover_name="id_equipamento", 
-                    hover_data=["modelo", "rpm_motor", "temp_motor_c"], 
-                    color_discrete_map=cores, 
-                    zoom=8.5, 
-                    center={"lat": -12.8, "lon": -55.8}, 
-                    title="Radar GPS Transmissão contínua"
-                )
-                fig_mapa.update_layout(mapbox_style="carto-darkmatter", margin={"r":0,"t":40,"l":0,"b":0}, paper_bgcolor="#050810")
-                st.plotly_chart(fig_mapa, use_container_width=True, height=450)
-            
-            with col_m2:
-                fig_oee = px.scatter(
-                    df_frota, 
-                    x="rpm_motor", 
-                    y="temp_motor_c", 
-                    color="status",
+        st.markdown("<h2 style='text-align: center;'>🛰️ AgroOS
