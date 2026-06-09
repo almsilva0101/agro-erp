@@ -105,7 +105,8 @@ def tela_autenticacao():
         
         menu_auth = st.radio("Selecione uma opção", ["Entrar no Sistema", "Criar Nova Conta (Auto-Cadastro)"], horizontal=True)
         st.markdown("---")
-if menu_auth == "Entrar no Sistema":
+        
+        if menu_auth == "Entrar no Sistema":
             user = st.text_input("Usuário/E-mail", key="login_user")
             password = st.text_input("Senha", type="password", key="login_pass")
             
@@ -234,4 +235,4 @@ else:
     if st.sidebar.button("Encerrar Sessão", use_container_width=True):
         st.session_state['logado'] = False
         st.session_state['usuario'] = ""
-        st.rerun()        
+        st.rerun()
