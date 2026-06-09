@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 import hashlib
 from sqlalchemy import text
+import streamlit.components.v1 as components # <-- IMPORT NOVO PARA O RADAR!
 
 # ==========================================
 # 1. SETUP & UI/UX DESIGN
@@ -156,7 +157,10 @@ def tela_dashboard():
     c4.markdown(f'<div class="glass-card"><div class="metric-title">🚨 Máquinas Críticas (IoT)</div><div class="metric-value metric-alert">{criticos}</div></div>', unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
-    tab_frota, tab_lavoura, tab_pecuaria, tab_logistica = st.tabs(["🚜 Radar IoT da Frota", "🌾 Agronomia & Solos", "🐄 Gestão Pecuária", "🚛 Logística & Escoamento"])
+    # ABA NOVA ADICIONADA AQUI!
+    tab_frota, tab_lavoura, tab_pecuaria, tab_logistica, tab_clima = st.tabs([
+        "🚜 Radar IoT da Frota", "🌾 Agronomia & Solos", "🐄 Gestão Pecuária", "🚛 Logística & Escoamento", "⛅ Clima & Ambiente"
+    ])
 
     with tab_frota:
         if df_frota.empty:
@@ -176,11 +180,54 @@ def tela_dashboard():
             st.dataframe(df_frota, use_container_width=True, height=200)
 
     with tab_lavoura:
-        st.dataframe(df_lavoura.style.background_gradient(subset=['NDVI_Saude'], cmap='YlGn'), use_container_width=True, height=350)
+        col_l1, col_l2 = st.columns([1, 2])
+        with col_l1:
+            fig_cult = px.pie(df_lavoura, names="Cultura", values="Hectares", hole=0.6, title="Culturas Mapeadas")
+            fig_cult.update_layout(template="plotly_dark", paper_bgcolor="#050810")
+            st.plotly_chart(fig_cult, use_container_width=True)
+        with col_l2:
+            st.markdown("##### 📋 Tabela extraída do Supabase")
+            st.dataframe(df_lavoura.style.background_gradient(subset=['NDVI_Saude'], cmap='YlGn'), use_container_width=True, height=350)
+            
     with tab_pecuaria:
-        st.dataframe(df_pecuaria.style.highlight_max(subset=['Mortalidade_Perc'], color='#7F1D1D'), use_container_width=True, height=350)
+        col_p1, col_p2 = st.columns([1, 2])
+        with col_p1:
+            fig_gado = px.box(df_pecuaria, x="Raca", y="Peso_Arroba", color="Raca", title="Peso por Raça")
+            fig_gado.update_layout(template="plotly_dark", paper_bgcolor="#050810", showlegend=False)
+            st.plotly_chart(fig_gado, use_container_width=True)
+        with col_p2:
+            st.markdown("##### 📋 Tabela extraída do Supabase")
+            st.dataframe(df_pecuaria.style.highlight_max(subset=['Mortalidade_Perc'], color='#7F1D1D'), use_container_width=True, height=350)
+            
     with tab_logistica:
-        st.dataframe(df_rotas, use_container_width=True, height=350)
+        col_c1, col_c2 = st.columns([1, 2])
+        with col_c1:
+            fig_rotas = go.Figure()
+            for _, row in df_rotas.iterrows():
+                cor_linha = "#EF4444" if row['Espera_Porto_h'] > 24 else "#3B82F6"
+                fig_rotas.add_trace(go.Scattermapbox(
+                    mode="lines+markers", lon=[row['Lon_O'], row['Lon_D']], lat=[row['Lat_O'], row['Lat_D']],
+                    marker={'size': 10}, line=dict(width=3, color=cor_linha),
+                    name=row['Destino'], text=f"Placa: {row['Placa']} | Motorista: {row['Motorista']}"
+                ))
+            fig_rotas.update_layout(title="Corredores Logísticos", mapbox_style="carto-darkmatter", mapbox=dict(center=dict(lat=-15.0, lon=-50.0), zoom=3.0), margin={"r":0,"t":40,"l":0,"b":0}, paper_bgcolor="#050810", showlegend=False)
+            st.plotly_chart(fig_rotas, use_container_width=True, height=350)
+        with col_c2:
+            st.markdown("##### 📋 Diário de Bordo (CT-e)")
+            st.dataframe(df_rotas.drop(columns=["Lat_O", "Lon_O", "Lat_D", "Lon_D"]), use_container_width=True, height=350)
+
+    # CONTEÚDO DA NOVA ABA DE CLIMA
+    with tab_clima:
+        st.markdown("##### 🛰️ Radar Meteorológico em Tempo Real")
+        # Este componente vai injetar o radar do Windy.com focado na região das fazendas simuladas (Mato Grosso)
+        components.iframe("https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=%C2%B0C&metricWind=km%2Fh&zoom=5&overlay=rain&product=ecmwf&level=surface&lat=-12.8&lon=-55.8", height=450)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        col_w1, col_w2, col_w3, col_w4 = st.columns(4)
+        col_w1.markdown(f'<div class="glass-card"><div class="metric-title">🌡️ Temperatura Média</div><div class="metric-value">31 °C</div><div class="metric-delta">Sensação Térmica: 33 °C</div></div>', unsafe_allow_html=True)
+        col_w2.markdown(f'<div class="glass-card"><div class="metric-title">💧 Umidade Relativa</div><div class="metric-value">68 %</div><div class="metric-delta">Ideal para Pulverização</div></div>', unsafe_allow_html=True)
+        col_w3.markdown(f'<div class="glass-card"><div class="metric-title">🌧️ Probabilidade Chuva</div><div class="metric-value">45 %</div><div class="metric-delta">Previsão nas próximas 12h</div></div>', unsafe_allow_html=True)
+        col_w4.markdown(f'<div class="glass-card"><div class="metric-title">💨 Velocidade Vento</div><div class="metric-value">14 km/h</div><div class="metric-delta">Direção Predominante: NE</div></div>', unsafe_allow_html=True)
 
 def tela_cadastro():
     st.title("🗂️ Cadastro de Master Data (Nuvem)")
